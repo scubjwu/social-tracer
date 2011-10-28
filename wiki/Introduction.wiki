@@ -6,10 +6,7 @@ Social Tracer is a social tracing application to be used in opportunistic networ
 
 This is a project done at the Politehnica University of Bucharest, and will be used for an experiment using the students at the university. The goal is to gather traces similar to the ones from [http://crawdad.org/data.php CRAWDAD] that can later be used as input to an opportunistic networking data dissemination algorithm.
 
-
-= Details =
-
 You can find out more about the project by accessing one of the following pages:
-  * a
-  * b
-  * c
+  * [OpportunisticNetworking Details about opportunistic networking]
+  * [HowTo How to use the application]
+  * [Implementation Details about the implementation of Social Tracer]
