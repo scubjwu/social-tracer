@@ -1,13 +1,9 @@
 #summary Details about opportunistic networking.
 
-= Introduction =
+= Opportunistic Networking =
 
-Add your content here.
+Opportunistic networks are networks composed mainly of mobile nodes that do not necessarily have a direct connection between them. However, this is not viewed as a disadvantage because routes are built dynamically, as each node acts according to the store-carry-and-forward paradigm. Thus,  contacts between nodes are viewed as an opportunity to move data closer to the destination.
 
+Such networks are an evolution of MANETs, where mobile nodes communicate with each other even if a route connecting them does not exist. The nodes that are spread across the environment form the actual network, and they are not required to posses information about the network topology. The routes between nodes are dynamically created, and any nodes can be opportunistically used as a next hop, if they can bring the message closer to the destination.
 
-= Details =
-
-Add your content here.  Format your content with:
-  * Text in *bold* or _italic_
-  * Headings, paragraphs, and lists
-  * Automatic links to other wiki pages
+Nodes may store a message, carry it around, and forward it when they encounter the destination or a node that is more likely to reach the destination. An important topic in opportunistic networks is represented by data dissemination, which is a natural continuation of forwarding, and is usually based on a publish/subscribe model.
