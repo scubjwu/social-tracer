@@ -6,7 +6,7 @@ This page details the way the Social Tracer application is implemented.
 
 == General ==
 
-
+Social Tracer is an Android application that collects data about Bluetooth encounters for a device. It only uses three permissions (BLUETOOTH, BLUETOOTH_ADMIN and INTERNET) and does not access personal data from the phone. The entire source code is available at the [http://code.google.com/p/social-tracer/source/checkout Source] section, and the .apk will be available soon at the [http://code.google.com/p/social-tracer/downloads/list Downloads] section.
 
 == Bluetooth ==
 
@@ -31,5 +31,8 @@ When data is logged for tracing, it is saved in a log file as an Android local f
 
 == Uploading ==
 
+For uploading data to the central server, the data is kept in the same format as when saving it, and it is done with 500 entries at a time. The central server listens on a {{{ServerSocket}}} for incoming connections, and saves the data from a connection to a file which has the name composed of the MAC of the logging device and the time of the server.
 
 == Battery Consumption ==
+
+Results from battery consumption experiments will be shown here shortly.
