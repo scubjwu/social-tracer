@@ -1,13 +1,35 @@
 #summary Details about the implementation of Social Tracer.
 
-= Introduction =
+= Implementation =
 
-Add your content here.
+This page details the way the Social Tracer application is implemented.
+
+== General ==
 
 
-= Details =
 
-Add your content here.  Format your content with:
-  * Text in *bold* or _italic_
-  * Headings, paragraphs, and lists
-  * Automatic links to other wiki pages
+== Bluetooth ==
+
+When starting tracing, Bluetooth is opened. Then, at regular time intervals (selected by the user prior to starting to trace) a search for devices in range is performed. The paired devices are checked first. The advantage of paired devices is that a connection to them can be created even if they are not set to discoverable. Therefore, in order to find paired devices in range, we have to cycle through the list of paired devices and attempt to connect to each of them:
+
+{{{
+BluetoothSocket socket = pairedDevice.createRfcommSocketToServiceRecord(new UUID(1, 1));
+socket.connect();
+}}}
+
+If the {{{connect()}}} function throws an exception, it means that the device is not in range. If it succeeds, then the device is in range and the connection can then be dropped (the device name and address are already known). Because a connection is the only way to see that a paired device is in range (if it's not discoverable), the server side had to be implemented as well. Therefore, a {{{BluetoothServerSocket}}} is created for each device, which listens to connections with a specific UUID:
+
+{{{
+BluetoothServerSocket serverSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord("ro.pub.acs", new UUID(1, 1));
+}}}
+
+After scanning all paired devices, a discovery of unpaired devices in range is then performed, using a {{{BroadcastReceiver}}} with an {{{IntentFilter}}} set to {{{BluetoothDevice.ACTION_FOUND}}}.
+
+== Data format ==
+
+When data is logged for tracing, it is saved in a log file as an Android local file named "LogFile". An entry in a log file contains three fields: name, address and timestamp. The name and address are taken from the {{{BluetoothDevice}}} specific to the device found (using {{{getName()}}} and {{{getAddress()}}}), where the name is given by the user when setting up the Bluetooth, and the address is the unique MAC address of the device. The timestamp is computed using {{{System.currentTimeMillis()}}}. These entries are separated by the "#" symbol when written to the file.
+
+== Uploading ==
+
+
+== Battery Consumption ==
