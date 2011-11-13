@@ -1,14 +1,16 @@
 package ro.pub.acs.tracer;
 
+import java.io.DataOutputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 import android.app.NotificationManager;
 import android.app.Service;
@@ -25,78 +27,81 @@ import android.os.IBinder;
 import android.util.Log;
 import android.widget.Toast;
 
+/**
+ * Service for Bluetooth tracing.
+ * @author Radu Ioan Ciobanu
+ */
 public class BluetoothTracerService extends Service {
-	
+
+	// notitifaction variables.
 	private NotificationManager notificationManager;
 	private int NOTIFICATION = R.string.bluetoothTracerServiceNotification;
 	Handler toastHandler = new Handler();
+	
+	// IntentFilters for Bluetooth actions.
 	private IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
 	private IntentFilter filter2 = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+	
+	// current Bluetooth adapter.
 	BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+	
+	// list of currently discovered devices.
 	private List<Device> devices = new ArrayList<Device>();
+	
+	// Bluetooth broadcast receiver.
 	private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
-        public void onReceive(Context context, Intent intent) {
+        @Override
+		public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            Log.i(MainActivity.LOG_TAG, "AJUNG AICI");
-            //Toast.makeText(BluetoothTracerService.this, "AJUNG AICI",
-            		//Toast.LENGTH_SHORT).show();
-            toastHandler.post(new ToastRunnable("AJUNG AICI"));
-            // When discovery finds a device
+            
+            if (MainActivity.LOG)
+	            Log.i(MainActivity.LOG_TAG, "Called BroadcastReceiver onReceive");
+	            
+            if (MainActivity.DEBUG)
+            	toastHandler.post(new ToastRunnable("Called BroadcastReceiver onReceive"));
+            
+            // discovery finds a device.
             if (BluetoothDevice.ACTION_FOUND.equals(action)) {
-                // Get the BluetoothDevice object from the Intent
+                
+            	// get the BluetoothDevice object from the Intent.
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                // Add the name and address to an array adapter to show in a ListView
-                //mArrayAdapter.add(device.getName() + "\n" + device.getAddress());
-                Log.i(MainActivity.LOG_TAG, device.getName() + "," + device.getAddress()
-                		+ "," + System.currentTimeMillis());
-                //Toast.makeText(BluetoothTracerService.this, device.getName() + "," + device.getAddress()
-                	//	+ "," + System.currentTimeMillis(),
-                		//Toast.LENGTH_SHORT).show();
-                toastHandler.post(new ToastRunnable(device.getName() + "," + device.getAddress()
-                    	+ "," + System.currentTimeMillis()));
+                
+                if (MainActivity.LOG)
+                	Log.i(MainActivity.LOG_TAG, device.getName() + "," + device.getAddress()
+                			+ "," + System.currentTimeMillis());
+                
+                if (MainActivity.DEBUG)
+	                toastHandler.post(new ToastRunnable(device.getName() + "," + device.getAddress()
+	                    	+ "," + System.currentTimeMillis()));
+                
+                // add discovered device to list of devices.
                 devices.add(new Device(device.getName(), device.getAddress(),
                 		System.currentTimeMillis()));
             } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
-            	Log.i(MainActivity.LOG_TAG, "Discovery finished");
-            	//Toast.makeText(BluetoothTracerService.this, "Discovery finished",
-                	//	Toast.LENGTH_SHORT).show();
-            	toastHandler.post(new ToastRunnable("Discovery finished"));
+            	// discovery finishes.
             	
-            	/*
-            	checkPairedDevices();
-            	// WRITE TO FILE.
-            	writeData(devices);
-            	// clear list.
-            	devices.clear();
-            	// AND THEN SLEEP AND TRY AGAIN?
-            	bluetoothAdapter.startDiscovery();
-            	*/
-
-            	Log.w(MainActivity.LOG_TAG, "starting to write");
-            	writeData(devices);
-            	devices.clear();
-            	Log.w(MainActivity.LOG_TAG, "written, now pausing");
+            	if (MainActivity.LOG)
+            		Log.i(MainActivity.LOG_TAG, "Discovery finished");
             	
-    			try {
-					Thread.sleep(1000);
-					//Thread.sleep(MainActivity.discoveryInterval * 1000); // TODO this
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-					Log.w(MainActivity.LOG_TAG, "sleep exception");
-				}
+            	if (MainActivity.DEBUG)
+            		toastHandler.post(new ToastRunnable("Discovery finished"));
+            	            	
+            	// write data to log file.
+            	if (writeData(devices))
+            			devices.clear();
+            	
+            	if (MainActivity.LOG)
+            		Log.d(MainActivity.LOG_TAG, "Written");
     			
-    			Log.w(MainActivity.LOG_TAG, "finished sleeping, starting new thread");
-    			
+    			// start new thread.
     			new DiscoveryThread().start();
             }
         }
     };
 	
 	/**
-     * Class for clients to access.  Because we know this service always
-     * runs in the same process as its clients, we don't need to deal with
-     * IPC.
+     * Class used by clients to access this service.
+     * @author Radu Ioan Ciobanu
      */
     public class LocalBinder extends Binder {
         BluetoothTracerService getService() {
@@ -108,33 +113,30 @@ public class BluetoothTracerService extends Service {
     public void onCreate() {
         notificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
 
-        registerReceiver(mReceiver, filter); // Don't forget to unregister during onDestroy
+        // register the filters.
+        registerReceiver(mReceiver, filter);
         registerReceiver(mReceiver, filter2);
         
-        // Display a notification about us starting.  We put an icon in the status bar.
+        // display a notification.
         showNotification();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.i(MainActivity.LOG_TAG, "Received start id " + startId + ": " + intent);
-        // We want this service to continue running until it is explicitly
-        // stopped, so return sticky.
+        if (MainActivity.LOG)
+        	Log.i(MainActivity.LOG_TAG, "Received start id " + startId + ": " + intent);
         
-        // get MAC address.
+        // get MAC address and write it.
         MainActivity.MAC = bluetoothAdapter.getAddress();
+        writeMAC(MainActivity.MAC);
         
-        Toast.makeText(this, "MAC = " + bluetoothAdapter.getAddress(),
-        		Toast.LENGTH_SHORT).show();
-        Log.i(MainActivity.LOG_TAG, "MAC = " + bluetoothAdapter.getAddress());
+        if (MainActivity.DEBUG)
+	        Toast.makeText(this, "MAC = " + bluetoothAdapter.getAddress(),
+	        		Toast.LENGTH_SHORT).show();
+        if (MainActivity.LOG)
+        	Log.i(MainActivity.LOG_TAG, "MAC = " + bluetoothAdapter.getAddress());
         
-        /*
-        checkPairedDevices();
-        // Register the BroadcastReceiver
-        bluetoothAdapter.startDiscovery();
-        */
-        
-        Log.w(MainActivity.LOG_TAG, "starting first new thread");
+        // start first discovery Thread.
         new DiscoveryThread().start();
         
         return START_STICKY;
@@ -142,13 +144,17 @@ public class BluetoothTracerService extends Service {
 
     @Override
     public void onDestroy() {
-        // Cancel the persistent notification.
+        // cancel the persistent notification.
         notificationManager.cancel(NOTIFICATION);
 
-        // Tell the user we stopped.
+        // notify user.
         Toast.makeText(this, R.string.bluetoothTracerServiceStopped,
         		Toast.LENGTH_SHORT).show();
         
+        if (MainActivity.LOG)
+        	Log.i(MainActivity.LOG_TAG, "Bluetooth Tracer Service stopped");
+        
+        // unregister the receiver.
         unregisterReceiver(mReceiver);
     }
 
@@ -157,38 +163,25 @@ public class BluetoothTracerService extends Service {
         return binder;
     }
     
-    // This is the object that receives interactions from clients.  See
-    // RemoteService for a more complete example.
+    // object that receives interactions from clients.
     private final IBinder binder = new LocalBinder();
 
     /**
-     * Show a notification while this service is running.
+     * Shows a notification while this service is running.
      */
     private void showNotification() {
-        // In this sample, we'll use the same text for the ticker and the expanded notification
-        //CharSequence text = getText(R.string.bluetoothTracerServiceStarted);
-
-        /*
-        // Set the icon, scrolling text and timestamp
-        Notification notification = new Notification(R.drawable.stat_sample, text,
-                System.currentTimeMillis());
-
-        // The PendingIntent to launch our activity if the user selects this notification
-        PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
-                new Intent(this, LocalServiceActivities.Controller.class), 0);
-
-        // Set the info for the views that show in the notification panel.
-        notification.setLatestEventInfo(this, getText(R.string.local_service_label),
-                       text, contentIntent);
-                       */
-
-        // Send the notification.
-        //notificationManager.notify(NOTIFICATION, notification);
-    	Toast.makeText(this, "???", Toast.LENGTH_SHORT).show();
-    	Log.i(MainActivity.LOG_TAG, "NOTIFICATION!");
+        Toast.makeText(this, R.string.bluetoothTracerServiceStarted,
+        		Toast.LENGTH_SHORT).show();
+        
+        if (MainActivity.LOG)
+        	Log.i(MainActivity.LOG_TAG, "Bluetooth Tracer Service started!");
     }
     
-    private void writeData(List<Device> devices) {
+    /**
+     * Writes device log data to internal storage.
+     * @param devices list of discovered devices
+     */
+    private boolean writeData(List<Device> devices) {
     	try {
 			FileOutputStream fos = openFileOutput("LogFile", Context.MODE_APPEND);
 			PrintWriter out = new PrintWriter(new OutputStreamWriter(fos));
@@ -197,93 +190,144 @@ public class BluetoothTracerService extends Service {
 				out.println(device.name + "#" + device.MAC + "#" + device.time);
 								
 				// log info.
-				Log.v(MainActivity.LOG_TAG, "Saved data: " + device.name
-						+ ", " + device.MAC + ", " + device.time);
-				//Toast.makeText(BluetoothTracerService.this, "Saved data: " + device.name
-					//	+ ", " + device.MAC + ", " + device.time,
-	            		//Toast.LENGTH_SHORT).show();
-				toastHandler.post(new ToastRunnable("Saved data: " + device.name
-						+ ", " + device.MAC + ", " + device.time));
+				if (MainActivity.LOG)
+					Log.i(MainActivity.LOG_TAG, "Saved data: " + device.name
+							+ ", " + device.MAC + ", " + device.time);
+				
+				if (MainActivity.DEBUG)
+					toastHandler.post(new ToastRunnable("Saved data: " + device.name
+							+ ", " + device.MAC + ", " + device.time));
 			}
 			
 			out.flush();
 			out.close();
 			fos.close();
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
+			return false;
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
+			return false;
 		}
+    	
+    	return true;
     }
     
+    /**
+     * Checks which paired devices are in range.
+     */
     private void checkPairedDevices() {
     	Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
-        // If there are paired devices
-        if (pairedDevices.size() > 0) {
-        	// Loop through paired devices
-        	for (BluetoothDevice device : pairedDevices) {
-        		Log.i(MainActivity.LOG_TAG, "!" + device.getName() + ", " + device.getAddress());
-        		//Toast.makeText(BluetoothTracerService.this, "!" + device.getName() + ", " + device.getAddress(),
-	            	//	Toast.LENGTH_SHORT).show();
-        		toastHandler.post(new ToastRunnable("!" + device.getName() + ", " + device.getAddress()));
+
+    	if (pairedDevices.size() > 0) {
+    		for (BluetoothDevice device : pairedDevices) {
+        		
+    			if (MainActivity.LOG)
+    				Log.d(MainActivity.LOG_TAG, "Checking " + device.getName()
+    						+ ", " + device.getAddress());
+
+    			if (MainActivity.DEBUG)
+    				toastHandler.post(new ToastRunnable("Checking" + device.getName()
+    						+ ", " + device.getAddress()));
         	}
         }
         
-        Log.w(MainActivity.LOG_TAG, "cancel discovery");
+    	// cancel any ongoing discovery.
+    	if (MainActivity.LOG)
+    		Log.d(MainActivity.LOG_TAG, "cancel discovery");
         bluetoothAdapter.cancelDiscovery();
         
+        // try to connect to paired devices.
         for (BluetoothDevice pairedDevice : pairedDevices) {
         	BluetoothSocket tmp = null;
 
-            // Get a BluetoothSocket to connect with the given BluetoothDevice
             try {
-                // MY_UUID is the app's UUID string, also used by the server code
-                tmp = pairedDevice.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
-                //pairedDevice.
-            } catch (IOException e) {
-            	Log.w(MainActivity.LOG_TAG, "create socket exception");
-            	//Toast.makeText(BluetoothTracerService.this, "!exc",
-	            	//	Toast.LENGTH_SHORT).show();
+            	// create a socket to connect to paired device.
+            	Method m = pairedDevice.getClass().getMethod("createRfcommSocket", new Class[] { int.class });
+            	tmp = (BluetoothSocket) m.invoke(pairedDevice, 1);
+            } catch (NoSuchMethodException e) {
+            	if (MainActivity.LOG)
+            		Log.w(MainActivity.LOG_TAG, "Exception " + e.toString());
+            	continue;
+            } catch (IllegalAccessException e) {
+            	if (MainActivity.LOG)
+            		Log.w(MainActivity.LOG_TAG, "Exception " + e.toString());
+            	continue;
+            } catch (InvocationTargetException e) {
+            	if (MainActivity.LOG)
+            		Log.w(MainActivity.LOG_TAG, "Exception " + e.toString());
+            	continue;
             }
             
             try {
-                // Connect the device through the socket. This will block
-                // until it succeeds or throws an exception
+                // connect to paired device.
             	tmp.connect();
-                Log.i(MainActivity.LOG_TAG, pairedDevice.getName() + " ON");
-                //Toast.makeText(BluetoothTracerService.this, pairedDevice.getName() + " ON",
-	            	//	Toast.LENGTH_SHORT).show();
-                toastHandler.post(new ToastRunnable(pairedDevice.getName() + " ON"));
-                tmp.close();
                 
+            	if (MainActivity.LOG)
+            		Log.i(MainActivity.LOG_TAG, pairedDevice.getName() + " is ON");
+                
+            	if (MainActivity.DEBUG)
+            		toastHandler.post(new ToastRunnable(pairedDevice.getName() + " is ON"));
+                
+            	tmp.close();
+                
+            	// add to list of discovered devices.
                 devices.add(new Device(pairedDevice.getName(), pairedDevice.getAddress(),
                 		System.currentTimeMillis()));
             } catch (IOException connectException) {
+            	if (MainActivity.LOG)
+            		Log.w(MainActivity.LOG_TAG, "Exception " + connectException.toString());
             	
-            	Log.w(MainActivity.LOG_TAG, "exception - prolly off " + connectException.toString());
-            	
-                // Unable to connect; close the socket and get out
                 try {
-                	Log.i(MainActivity.LOG_TAG, pairedDevice.getName() + " OFF");
-                	//Toast.makeText(BluetoothTracerService.this, pairedDevice.getName() + " OFF",
-    	            	//	Toast.LENGTH_SHORT).show();
-                	toastHandler.post(new ToastRunnable(pairedDevice.getName() + " OFF"));
-                    tmp.close();
-                } catch (IOException closeException)
-                {
-                	Log.w(MainActivity.LOG_TAG, "close exception");
+                	if (MainActivity.LOG)
+                		Log.i(MainActivity.LOG_TAG, pairedDevice.getName() + " is OFF");
+
+                	if (MainActivity.DEBUG)
+                		toastHandler.post(new ToastRunnable(pairedDevice.getName() + " is OFF"));
+                    
+                	// close connection.
+                	tmp.close();
+                } catch (IOException closeException) {
+                	if (MainActivity.LOG)
+                		Log.w(MainActivity.LOG_TAG, "Exception " + closeException.toString());
                 }
             }
         }
     }
     
+    /**
+     * Writes MAC address to internal storage.
+     * @param MAC MAC address of the device
+     */
+    private void writeMAC(String MAC) {
+		try {
+			FileOutputStream fos = openFileOutput("MAC", Context.MODE_PRIVATE);
+			DataOutputStream dos = new DataOutputStream(fos);
+			dos.writeBytes(MAC);
+			dos.close();
+			fos.close();
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+    
+    /**
+     * Class for an encountered Bluetooth device.
+     * @author Radu Ioan Ciobanu
+     */
     private class Device {
     	String name;
     	String MAC;
     	long time;
     	
+    	/**
+    	 * Constructor for the Device class.
+    	 * @param name name of the device
+    	 * @param MAC MAC address of the device
+    	 * @param time timestamp of when the device was encountered
+    	 */
     	public Device(String name, String MAC, long time) {
     		this.name = name;
     		this.MAC = MAC;
@@ -291,20 +335,51 @@ public class BluetoothTracerService extends Service {
     	}
     }
     
+    /**
+     * Thread that starts a Bluetooth discovery.
+     * @author Radu Ioan Ciobanu
+     */
     private class DiscoveryThread extends Thread {
     	public void run() {
+    		
+    		if (MainActivity.LOG)
+				Log.d(MainActivity.LOG_TAG, "Going to sleep");
+    		
+    		try {
+				Thread.sleep(MainActivity.discoveryInterval * 1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				
+				if (MainActivity.LOG)
+					Log.w(MainActivity.LOG_TAG, "Sleep exception " + e.toString());
+			}
+			
+			if (MainActivity.LOG)
+				Log.d(MainActivity.LOG_TAG, "Woke up");
+			
     		checkPairedDevices();
         	bluetoothAdapter.startDiscovery();
     	}
     }
     
+    /**
+     * Runnable for outputting toast messages.
+     * @author Radu Ioan Ciobanu
+     */
     private class ToastRunnable implements Runnable {
     	String message = "";
     	
+    	/**
+    	 * Constructor for ToastRunnable class.
+    	 * @param message message to be outputted
+    	 */
     	public ToastRunnable(String message) {
     		this.message = message;
     	}
     	
+    	/**
+    	 * Method for outputting data.
+    	 */
     	public void run() {
     		Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
     	}

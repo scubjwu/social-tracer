@@ -10,7 +10,7 @@
     <string name="okButtonText">OK</string>
     <string name="facebookURLTextFieldText">Facebook URL</string>
     <string name="bluetoothTracerServiceNotification">BTService</string>
-    <string name="bluetoothTracerServiceStopped">Stopped</string>
-    <string name="bluetoothTracerServiceStarted">Started</string>
+    <string name="bluetoothTracerServiceStopped">Bluetooth Tracer Service stopped</string>
+    <string name="bluetoothTracerServiceStarted">Bluetooth Tracer Service started</string>
     <string name="exitButtonText">Exit</string>
 </resources>
