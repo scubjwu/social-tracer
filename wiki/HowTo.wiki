@@ -28,8 +28,9 @@ The application uses the following permissions:
   * BLUETOOTH
   * BLUETOOTH_ADMIN
   * INTERNET
+  * WAKE_LOCK
 
-The Bluetooth permissions are used to access and control the Bluetooth interface, while the Internet permission is used to allow the application to upload the collected data to a central server.
+The Bluetooth permissions are used to access and control the Bluetooth interface, while the Internet permission is used to allow the application to upload the collected data to a central server. The wake lock permission is used to acquire a processor wake lock so that the Bluetooth does not get turned off when the device enters deep sleep.
 
 == Getting Started ==
 
@@ -51,7 +52,7 @@ The main purpose of Social Tracer is to gather data about interactions with othe
 
 Firstly, it is important to note that Android does not allow for a device to be set to "Discoverable" on Bluetooth for more that 5 minutes at a time. This makes sense from a security point of view, as well as regarding battery consumption. Therefore, in order for two devices participating in this experiment to be able to see each other at any point, they have to be paired before the actual start of the experiment.
 
-Secondly, the Social Tracer app regularly scans Bluetooth devices in range when performing the tracing. The discovery interval can be set before starting the trace by using the slider in the main activity. The accepted interval is between 5 and 30 minutes. However, it should be noted that the longer the interval, the sparser will the collected data be, so information that is important to be experiment can be lost.
+Secondly, the Social Tracer app regularly scans Bluetooth devices in range when performing the tracing. The discovery interval can be set before starting the trace by using the slider in the main activity. The accepted interval is between 5 and 30 minutes. However, it should be noted that the longer the interval, the sparser will the collected data be, so information that is important to the experiment can be lost.
 
 The tracing is started by using the "On/Off" button, and is performed by a separate background service. While tracing is running, the phone can be put to "suspend", while the application is still running. A text view in the main activity shows the status of the application. To stop tracing, the same "On/Off" button must be pressed.
 
