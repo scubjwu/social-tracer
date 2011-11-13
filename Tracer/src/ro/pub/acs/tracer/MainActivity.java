@@ -37,7 +37,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
+/**
+ * Class for the "Main" tab.
+ * @author Radu Ioan Ciobanu
+ */
 public class MainActivity extends Activity {
+	
 	// logcat tag.
 	static final String LOG_TAG = "Tracer";
 	
@@ -53,34 +58,49 @@ public class MainActivity extends Activity {
 	Button uploadButton;
 	SeekBar discoveryIntervalSeekBar;
 	
+	// booleans for reading and writing user data.
 	boolean written = false;
 	boolean read = false;
 	
 	// dialog constants.
-	static final int FILL_IN_DIALOG = 0;
-	static final int UPLOAD_DIALOG = 1;
+	private static final int FILL_IN_DIALOG = 0;
+	private static final int UPLOAD_DIALOG = 1;
+	private static final int UPLOAD_ERROR_DIALOG = 2;
 	
-	// Bluetooth service.
+	/** debug boolean. */
+	public static boolean DEBUG = false;
+	
+	/** log boolean. */
+	public static boolean LOG = true;
+	
+	// Bluetooth service variables.
 	private BluetoothTracerService bluetoothTracerService;
 	boolean isBound = false;
-	
 	Intent bluetoothTracerIntent;
-	
 	private static final int REQUEST_ENABLE_BT = 0;
-	
 	boolean initialBluetoothState = false;
 	
-	public static String MAC = "";
-	
-	public static int discoveryInterval = 300;
-	
+	/** Thread object for the Bluetooth server. */
 	public BluetoothServerThread bluetoothServer;
 	
-	PowerManager powerManager;
-	PowerManager.WakeLock wakeLock;
+	/** MAC address of the current device. */
+	public static String MAC = "";
 	
-	// handler for toast in thread.
+	/** discovery interval. */
+	public static int discoveryInterval = 300;
+	
+	// wake lock variables.
+	PowerManager powerManager;
+	PowerManager.WakeLock traceWakeLock;
+	PowerManager.WakeLock uploadWakeLock;
+	
+	// handler for Toast in thread.
 	Handler toastHandler = new Handler();
+	
+	// handler for Dialog in thread.
+	Handler dialogHandler = new Handler();
+	
+	// Runnable that signals the start of uploading data.
 	Runnable toastRunnableStart = new Runnable() {
 		public void run() {
 			Toast.makeText(getApplicationContext(), "Upload started", Toast.LENGTH_SHORT)
@@ -88,11 +108,20 @@ public class MainActivity extends Activity {
 			setStatus("uploading");
 		}
 	};
+	
+	// Runnable that signals the finish of uploading data.
 	Runnable toastRunnableFinish = new Runnable() {
 		public void run() {
 			Toast.makeText(getApplicationContext(), "Upload finished", Toast.LENGTH_SHORT)
 				.show();
 			setStatus("none");
+		}
+	};
+	
+	// Runnable that starts an "upload error".
+	Runnable dialogRunnable = new Runnable() {
+		public void run() {
+			showDialog(UPLOAD_ERROR_DIALOG);
 		}
 	};
 	
@@ -104,80 +133,94 @@ public class MainActivity extends Activity {
 		super.onCreate(savedInstanceState);
 	    setContentView(R.layout.t_main);
 	    
-	    Log.v(MainActivity.LOG_TAG, "!!!onCreate!!!");
+	    if (LOG)
+	    	Log.d(MainActivity.LOG_TAG, "Called onCreate");
 	    
-	    //bluetoothTracer.init();
-	    
+	    // create the tracer Intent.
 	    bluetoothTracerIntent = new Intent(MainActivity.this, BluetoothTracerService.class);
 	    
+	    // get the buttons and seek bar.
 	    startStopButton = (ToggleButton)findViewById(R.id.startStopButton);
 	    fillInDataButton = (Button)findViewById(R.id.fillInDataButton);
 	    uploadButton = (Button)findViewById(R.id.uploadButton);
 	    discoveryIntervalSeekBar = (SeekBar)findViewById(R.id.discoveryIntervalSeekBar);
 	    
+	    // set discovery interval and seek bar position.
 	    setDiscoveryInterval(5 * 60);
 	    discoveryIntervalSeekBar.setMax(29 * 60);
 	    discoveryIntervalSeekBar.setProgress(4 * 60);
 	    
+	    // initialize wake lock.
 	    powerManager = (PowerManager)getSystemService(Context.POWER_SERVICE);
-	    wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Tracer");
+	    traceWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TraceWL");
+	    uploadWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "UploadWL");
 	    
+	    // read initial data.
 	    read = readData();
 	    
-	    /*
-	     * Set listener for "start/stop" button.
-	     */
+	    // set the default status.
+	    setStatus("none");
+	    
+	    // set listener for "start/stop" button.
 	    startStopButton.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
-				
 				BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 				
+				// the case for when the button is checked.
 				if (startStopButton.isChecked()) {
+					// check if data is not being uploaded.
 					if (uploadThread == null ||
 							(uploadThread != null && !uploadThread.isAlive())) {
+						
+						// check if Bluetooth is supported.
 						if (bluetoothAdapter == null) {
 						    return;
 						}
 						
+						// if Bluetooth is not enabled, start a Bluetooth-enabling Activity.
 						if (!bluetoothAdapter.isEnabled()) {
 							Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
 						    startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
 						}
+						// if it is enabled, start tracing.
 						else
 							startTracing();
 					} else {
 						startStopButton.setChecked(false);
 					}
 				}
+				// the case for when the button is unchecked.
 				else {
+					// set the buttons as clickable and stop the service.
 					uploadButton.setEnabled(true);
 					discoveryIntervalSeekBar.setEnabled(true);
 					getApplicationContext().stopService(bluetoothTracerIntent);
 					doUnbindService();
 					
+					// disable the Bluetooth adapter.
 					if (!initialBluetoothState) {
 						bluetoothAdapter.disable();
 						checkBluetooth(false);
 					}
 					
+					// set the status.
 					setStatus("none");
 					
-					if (bluetoothServer != null)
-						bluetoothServer.cancel();
+					// stop the Bluetooth server (we do not need it anymore).
+					//if (bluetoothServer != null)
+						//bluetoothServer.cancel();
 					
-					if (wakeLock.isHeld())
-						wakeLock.release();
-					
-					//BluetoothTracerActivity.stop();
+					// release the wake lock.
+					if (traceWakeLock.isHeld())
+						traceWakeLock.release();
 				}
 			}
 		});
 	    
-	    /*
-	     * Set listener for "fill in data" button.
-	     */
+	    // set listener for "fill in data" button.
 	    fillInDataButton.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
+				// show the dialog if an upload is not in progress.
 				if (uploadThread == null ||
 						(uploadThread != null && !uploadThread.isAlive())) {
 					showDialog(FILL_IN_DIALOG);
@@ -185,27 +228,21 @@ public class MainActivity extends Activity {
 			}
 		});
 	    
-	    /*
-	     * Set listener for "upload" button.
-	     */
+	    // set listener for "upload" button.
 	    uploadButton.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
+				// if the user has not filled in personal data yet, request that he does so.
 				if (!written && !read) {
 					showDialog(UPLOAD_DIALOG);
 					return;
 				}
 				
-				if (MAC.equals("")) {
-				}
-				
-				// upload MAC as well
+				// upload the data.
 				uploadData();
 			}
 		});
 	    
-	    /*
-	     * Set listener for seek bar.
-	     */
+	    // set listener for seek bar.
 	    discoveryIntervalSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
 			public void onStopTrackingTouch(SeekBar seekBar) {
 			}
@@ -213,53 +250,49 @@ public class MainActivity extends Activity {
 			public void onStartTrackingTouch(SeekBar seekBar) {
 			}
 			
-			public void onProgressChanged(SeekBar seekBar, int progress,
-					boolean fromUser) {
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
 				setDiscoveryInterval(progress + 60);
 			}
 		});
-	    
-	    setStatus("none");
     }
 	
 	@Override
 	public void onResume() {
 		super.onResume();
-		Log.v(MainActivity.LOG_TAG, "!!!onResume!!!");
+		
+		if (LOG)
+			Log.d(MainActivity.LOG_TAG, "Called onResume");
+		
+		// check the Bluetooth status.
 		checkBluetooth(false);
 	}
 	
-	/*public void onRestart() {
-		super.onRestart();
-		Log.v(MainActivity.LOG_TAG, "!!!onRestart!!!");
-	}*/
-	
-	/*public void onPause() {
-		super.onPause();
-		Log.v(MainActivity.LOG_TAG, "!!!onPause!!!");
-	}*/
-	
-	/*public void onStop() {
-		super.onStop();
-		Log.v(MainActivity.LOG_TAG, "!!!onStop!!!");
-	}*/
-	
+	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		
+		// result for Bluetooth enabling request.
 		if (requestCode == REQUEST_ENABLE_BT) {
+			
+			// if the response is "yes", start tracing.
 			if (resultCode == RESULT_OK) {
-				Log.v(MainActivity.LOG_TAG, "Bluetooth started");
-				Toast.makeText(this, "Bluetooth started", Toast.LENGTH_SHORT).show();
+				if (LOG)
+					Log.d(MainActivity.LOG_TAG, "Bluetooth started");
+				
+				if (DEBUG)
+					Toast.makeText(this, "Bluetooth started", Toast.LENGTH_SHORT).show();
+				
 				TextView bluetoothTextView = (TextView)findViewById(R.id.bluetoothTextView);
 				bluetoothTextView.setText("Bluetooth: on");
-				
 				startTracing();
-				
-            } else if (resultCode == RESULT_CANCELED) {
+            }
+			// if the response is "no", return to the main Activity.
+			else if (resultCode == RESULT_CANCELED) {
             	startStopButton.setChecked(false);
             }
         }
 	}
-	
+
+	@Override
 	protected Dialog onCreateDialog(int id) {
 		Context context = this;
 		final Dialog dialog;
@@ -271,9 +304,7 @@ public class MainActivity extends Activity {
 			dialog.setContentView(R.layout.popup);
 			dialog.setTitle("Fill In Data");
 			
-			/*
-			 * Set start values for user data.
-			 */
+			// set start values for user data.
 			if (read) {
 				((EditText)dialog.findViewById(R.id.nameTextField)).setText(name);
 				((EditText)dialog.findViewById(R.id.groupTextField)).setText(group);
@@ -282,9 +313,7 @@ public class MainActivity extends Activity {
 				written = true;
 			}
 			
-			/*
-		     * Set listener for "ok" button.
-		     */
+			// set listener for "ok" button.
 		    final Button okButton = (Button)dialog.findViewById(R.id.okButton);
 		    okButton.setOnClickListener(new View.OnClickListener() {
 				public void onClick(View v) {
@@ -322,6 +351,20 @@ public class MainActivity extends Activity {
 			dialog = alert;
 			break;
 			
+		case UPLOAD_ERROR_DIALOG:
+			AlertDialog.Builder builder1 = new AlertDialog.Builder(this);
+			builder1.setMessage("There has been an error connecting to the server." +
+					"Please check your Internet connection and try again.")
+			       .setCancelable(false)
+			       .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+			           public void onClick(DialogInterface dialog, int id) {
+			        	   dialog.cancel();
+			           }
+			       });
+			AlertDialog alert1 = builder1.create();
+			dialog = alert1;
+			break;
+			
 		default:
 			dialog = null;
 		}
@@ -330,28 +373,38 @@ public class MainActivity extends Activity {
 		return dialog;
 	}
 	
+	@Override
 	public void onStart() {
 		super.onStart();
-		Log.v(MainActivity.LOG_TAG, "!!!onStart!!!");
 		checkBluetooth(true);
+		
+		if (LOG)
+			Log.d(MainActivity.LOG_TAG, "Called onStart");
 	}
 	
+	/**
+	 * Starts the tracing operation.
+	 */
 	private void startTracing() {
 		uploadButton.setEnabled(false);
 		discoveryIntervalSeekBar.setEnabled(false);
 		
 		setStatus("scanning");
 		
-		//bluetoothTracer.start();
 		doBindService();
 		getApplicationContext().startService(bluetoothTracerIntent);
 
-		wakeLock.acquire();
+		traceWakeLock.acquire();
 		
-		bluetoothServer = new BluetoothServerThread();
-		bluetoothServer.start();
+		// we do not need the Bluetooth server thread when using the default UUID.
+		//bluetoothServer = new BluetoothServerThread();
+		//bluetoothServer.start();
 	}
 	
+	/**
+	 * Checks if Bluetooth is activated on the device.
+	 * @param first boolean value for first run
+	 */
 	private void checkBluetooth(boolean first) {
 		BluetoothAdapter btAdapter = BluetoothAdapter.getDefaultAdapter();
 		TextView bluetoothTextView = (TextView)findViewById(R.id.bluetoothTextView);
@@ -373,6 +426,9 @@ public class MainActivity extends Activity {
 		bluetoothTextView.setText("Bluetooth: on");
 	}
 	
+	/**
+	 * Writes user data to internal storage.
+	 */
 	private void writeData() {
 		try {
 			FileOutputStream fos = openFileOutput("UserData", Context.MODE_PRIVATE);
@@ -389,21 +445,26 @@ public class MainActivity extends Activity {
 			dos.close();
 			fos.close();
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		
-		// log info.
-		Log.v(LOG_TAG, "Saved data: " + name + ", " + year
-				+ ", " + group + ", " + facebookURL);
-		Toast.makeText(this, "Saved data: " + name + ", " + year
-				+ ", " + group + ", " + facebookURL,
-        		Toast.LENGTH_SHORT).show();
+		// log information.
+		if (LOG)
+			Log.i(LOG_TAG, "Saved data: " + name + ", " + year
+					+ ", " + group + ", " + facebookURL);
+		
+		if (DEBUG)
+			Toast.makeText(this, "Saved data: " + name + ", " + year
+					+ ", " + group + ", " + facebookURL,
+	        		Toast.LENGTH_SHORT).show();
 	}
 	
+	/**
+	 * Reads user data from internal storage.
+	 * @return {@code}true{@code} if read succeeded, {@code}false{@code} otherwise
+	 */
 	private boolean readData() {
 		int length = -1;
 		byte[] buffer;
@@ -435,66 +496,65 @@ public class MainActivity extends Activity {
 			dis.close();
 			fis.close();
 		} catch (FileNotFoundException e) {
-			//e.printStackTrace();
+			e.printStackTrace();
 			return false;
 		} catch (IOException e) {
 			e.printStackTrace();
 			return false;
 		}
 		
-		// log info.
-		Log.v(LOG_TAG, "Restored data: " + name + ", " + year
-				+ ", " + group + ", " + facebookURL);
-		Toast.makeText(this, "Restored data: " + name + ", " + year
-				+ ", " + group + ", " + facebookURL,
-        		Toast.LENGTH_SHORT).show();
+		// log information.
+		if (LOG)
+			Log.i(LOG_TAG, "Restored data: " + name + ", " + year
+					+ ", " + group + ", " + facebookURL);
+		
+		if (DEBUG)
+			Toast.makeText(this, "Restored data: " + name + ", " + year
+					+ ", " + group + ", " + facebookURL,
+	        		Toast.LENGTH_SHORT).show();
 		
 		return true;
 	}
 	
+	/**
+	 * Starts a new upload thread to send data to the central server.
+	 */
 	private void uploadData() {
 		uploadThread = new UploadThread();
 		uploadThread.start();
 	}
 	
+	// ServiceConnection object for accesing the Bluetooth tracer service.
 	private ServiceConnection serviceConnection = new ServiceConnection() {
-	    public void onServiceConnected(ComponentName className, IBinder service) {
-	        // This is called when the connection with the service has been
-	        // established, giving us the service object we can use to
-	        // interact with the service.  Because we have bound to a explicit
-	        // service that we know is running in our own process, we can
-	        // cast its IBinder to a concrete class and directly access it.
-	        bluetoothTracerService = ((BluetoothTracerService.LocalBinder)service).getService();
-
-	        // Tell the user about this for our demo.
-	        //Toast.makeText(Binding.this, R.string.local_service_connected,
-	          //      Toast.LENGTH_SHORT).show();
+		/**
+		 * Called when a connection is established with the service.
+		 */
+		public void onServiceConnected(ComponentName className, IBinder service) {
+			bluetoothTracerService = ((BluetoothTracerService.LocalBinder)service).getService();
 	    }
 
+		/**
+		 * Called when the service is disconnected.
+		 */
 	    public void onServiceDisconnected(ComponentName className) {
-	        // This is called when the connection with the service has been
-	        // unexpectedly disconnected -- that is, its process crashed.
-	        // Because it is running in our same process, we should never
-	        // see this happen.
 	        bluetoothTracerService = null;
-	        //Toast.makeText(Binding.this, R.string.local_service_disconnected,
-	          //      Toast.LENGTH_SHORT).show();
 	    }
 	};
 	
+	/**
+	 * Establishes connection with the service.
+	 */
 	void doBindService() {
-	    // Establish a connection with the service.  We use an explicit
-	    // class name because we want a specific service implementation that
-	    // we know will be running in our own process (and thus won't be
-	    // supporting component replacement by other applications).
-	    getApplicationContext().bindService(bluetoothTracerIntent,
+		getApplicationContext().bindService(bluetoothTracerIntent,
 	    		serviceConnection, Context.BIND_AUTO_CREATE);
 	    isBound = true;
 	}
 
+	/**
+	 * Disconnects from a service.
+	 */
 	void doUnbindService() {
 	    if (isBound) {
-	        // Detach our existing connection.
 	        getApplicationContext().unbindService(serviceConnection);
 	        isBound = false;
 	    }
@@ -503,31 +563,74 @@ public class MainActivity extends Activity {
 	@Override
 	protected void onDestroy() {
 	    super.onDestroy();
-	    Log.v(MainActivity.LOG_TAG, "!!!onDestroy!!!");
 	    getApplicationContext().stopService(bluetoothTracerIntent);
 	    doUnbindService();
 	    
-	    if (bluetoothServer != null && bluetoothServer.isAlive())
-	    	bluetoothServer.cancel();
+	    if (LOG)
+	    	Log.d(MainActivity.LOG_TAG, "Called onDestroy");
 	    
-	    if (wakeLock.isHeld())
-	    	wakeLock.release();
+	    // no need for a Bluetooth thread anymore.
+	    //if (bluetoothServer != null && bluetoothServer.isAlive())
+	    	//bluetoothServer.cancel();
+	    
+	    if (traceWakeLock.isHeld())
+	    	traceWakeLock.release();
+	    
+	    if (uploadWakeLock.isHeld())
+	    	uploadWakeLock.release();
 	    
 	    if (!initialBluetoothState)
 	    	BluetoothAdapter.getDefaultAdapter().disable();
+	    
+	    // kill the current process so that it does not remain running.
+	    android.os.Process.killProcess(android.os.Process.myPid());
 	}
 	
+	/**
+	 * Sets the current status of the application.
+	 * @param status new status
+	 */
 	private void setStatus(String status) {
 		TextView statusTextView = (TextView)findViewById(R.id.statusTextView);
 		statusTextView.setText("Status: " + status);
 	}
 	
+	/**
+	 * Sets the discovery interval for the device.
+	 * @param seconds new discovery interval in seconds
+	 */
 	private void setDiscoveryInterval(int seconds) {
 		TextView discoveryIntervalTextView = (TextView)findViewById(R.id.discoveryIntervalTextView);
 	    discoveryIntervalTextView.setText("Discovery interval: " + seconds + "s");
 	    discoveryInterval = seconds;
 	}
 	
+	/**
+	 * Reads the MAC address from the internal storage.
+	 */
+	private void readMAC() {
+		byte[] buffer;
+		
+		try {
+			FileInputStream fis = openFileInput("MAC");
+			DataInputStream dis = new DataInputStream(fis);
+			
+			buffer = new byte[17];
+			dis.read(buffer, 0, 17);
+			MAC = new String(buffer);
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+			MAC = "00:00:00:00:00:00";
+		} catch (IOException e) {
+			e.printStackTrace();
+			MAC = "00:00:00:00:00:00";
+		}
+	}
+	
+	/**
+	 * Thread for uploading data to the central server.
+	 * @author Radu Ioan Ciobanu
+	 */
 	class UploadThread extends Thread {
 		public void run() {
 			Socket socket;
@@ -535,8 +638,10 @@ public class MainActivity extends Activity {
 			
 			toastHandler.post(toastRunnableStart);
 			
+			uploadWakeLock.acquire();
+			
 			try {
-				socket = new Socket("cipsm.hpc.pub.ro", 8080); // TODO replace with actual address
+				socket = new Socket("cipsm.hpc.pub.ro", 8080);
 				PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
 				BufferedReader in = new BufferedReader(new InputStreamReader(
 		                socket.getInputStream()));
@@ -550,6 +655,8 @@ public class MainActivity extends Activity {
 				}
 				
 				// send user data (including MAC address).
+				if (MAC.equals(""))
+					readMAC();
 				out.println(name + "#" + year + "#" + group + "#" + facebookURL + "#" + MAC);
 				
 				StringBuffer buffer = new StringBuffer("");
@@ -558,8 +665,9 @@ public class MainActivity extends Activity {
 				BufferedReader inFile = new BufferedReader(new InputStreamReader(fis));
 				String nextLine = inFile.readLine();
 				
+				// send logging data.
 				while (true) {
-					while (nextLine != null && count < 3) {
+					while (nextLine != null && count < 200) {
 						count++;
 						buffer.append(nextLine + "#");
 						nextLine = inFile.readLine();
@@ -579,35 +687,39 @@ public class MainActivity extends Activity {
 					count = 0;
 				}
 				
+				// send closing message.
 				out.println("finish");
 				
 				// now that the file has been sent, delete it.
 				getApplicationContext().deleteFile("LogFile");
 			} catch (UnknownHostException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
+				dialogHandler.post(dialogRunnable);
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
+				dialogHandler.post(dialogRunnable);
+			} finally {
+				// release the wake lock for uploading.
+				if (uploadWakeLock.isHeld())
+			    	uploadWakeLock.release();
 			}
 			
 			toastHandler.post(toastRunnableFinish);
 		}
 	}
 	
+	/**
+	 * Thread for receiving Bluetooth connections (may not need it).
+	 * @author Radu Ioan Ciobanu
+	 */
 	class BluetoothServerThread extends Thread {
 		private BluetoothServerSocket serverSocket;
 		
-		public BluetoothServerThread() {
-			// Use a temporary object that is later assigned to mmServerSocket,
-	        // because mmServerSocket is final
-			
-			Log.d(LOG_TAG, "server thread created");
-		}
-		
+		@Override
 		public void run() {
 	        BluetoothSocket socket = null;
-	        // Keep listening until exception occurs or a socket is returned
+	        
+	        // keep listening until exception occurs or a socket is returned.
 	        while (true) {
 	        	
 	        	BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
@@ -616,73 +728,105 @@ public class MainActivity extends Activity {
 					;
 				
 		        try {
-		            // MY_UUID is the app's UUID string, also used by the client code
 		            serverSocket = bluetoothAdapter 
 		            		.listenUsingRfcommWithServiceRecord("ro.pub.acs", UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
-		            Log.d(LOG_TAG, "server socket created");
+		            if (LOG)
+		            	Log.d(LOG_TAG, "Server socket created");
 		        } catch (IOException e) {
-		        	Log.d(LOG_TAG, "server socket exception");
+		        	if (LOG)
+		        		Log.w(LOG_TAG, "Server socket exception " + e.toString());
 		        	e.printStackTrace();
+		        	continue;
 		        }
 	        	
 	            try {
-	            	if (serverSocket == null)
-	            		Log.v(LOG_TAG, "NULL");
-	            	Log.d(LOG_TAG, "starting to accept connection");
-	                socket = serverSocket.accept();
-	                Log.d(LOG_TAG, "connection accepted");
+	            	if (LOG)
+	            		Log.d(LOG_TAG, "Starting to accept connection");
+	                
+	            	socket = serverSocket.accept();
+	                
+	            	if (LOG)
+	            		Log.d(LOG_TAG, "Connection accepted");
 	            } catch (IOException e) {
-	            	Log.d(LOG_TAG, "accept exception " + e.toString());
+	            	if (LOG)
+	            		Log.w(LOG_TAG, "Accept exception " + e.toString());
+	            	
 	            	e.printStackTrace();
 	                continue;
 	            }
 	            
-	            Log.d(LOG_TAG, "exited try-catch");
+	            if (LOG)
+	            	Log.d(LOG_TAG, "Exited try-catch");
 	            
-	            // If a connection was accepted
+	            // if a connection was accepted.
 	            if (socket != null) {
-	                // Do work to manage the connection (in a separate thread)
-	            	Log.d(LOG_TAG, "starting new socket manager");
-	                new BluetoothAuxThread(socket).start();
-	                Log.d(LOG_TAG, "finished starting new socket manager");
-	                //mmServerSocket.close();
-	                //break;
+	                // start a thread to manage the connection.
+	            	new BluetoothAuxThread(socket).start();
+	                
+	            	if (LOG)
+	            		Log.d(LOG_TAG, "Started new socket manager");
 	            }
 	            
 	            try {
 		            serverSocket.close();
-		            Log.v(LOG_TAG, "Connection cancelled");
-		        } catch (IOException e) { }
+		            
+		            if (LOG)
+		            	Log.d(LOG_TAG, "Connection cancelled");
+		        } catch (IOException e) {
+		        	e.printStackTrace();
+		        	continue;
+		        }
 	        }
 	    }
 	 
-	    /** Will cancel the listening socket, and cause the thread to finish */
+		/**
+		 * Cancels the listening socket, causing the thread to finish.
+		 */
 	    public void cancel() {
 	        try {
 	        	if (serverSocket != null)
 	        		serverSocket.close();
-	            Log.v(LOG_TAG, "Connection cancelled");
-	        } catch (IOException e) { }
+	            
+	        	if (LOG)
+	        		Log.d(LOG_TAG, "Connection cancelled");
+	        } catch (IOException e) {
+	        	e.printStackTrace();
+	        	return;
+	        }
 	    }
 	}
 	
+	/**
+	 * Thread that closes a Bluetooth connection.
+	 * @author Radu Ioan Ciobanu
+	 */
 	class BluetoothAuxThread extends Thread {
 		BluetoothSocket socket;
 		
+		/**
+		 * Constructor for the BluetoothAuxThread class.
+		 * @param socket socket to be closed
+		 */
 		public BluetoothAuxThread(BluetoothSocket socket) {
-			Log.d(LOG_TAG, "initializing socket manager");
+			if (LOG)
+				Log.d(LOG_TAG, "Initializing socket manager");
+			
 			this.socket = socket;			
 		}
 		
+		@Override
 		public void run() {
 			try {
-            	Log.v(LOG_TAG, "Connection accepted");
 				socket.close();
-				Log.d(LOG_TAG, "connection closed");
+				
+				if (LOG)
+					Log.d(LOG_TAG, "Connection closed");
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				Log.d(LOG_TAG, "connection close exception");
+				if (LOG)
+					Log.w(LOG_TAG, "Connection close exception" + e.toString());
+				
 				e.printStackTrace();
+				return;
 			}
 		}
 	}

@@ -7,8 +7,8 @@ import android.widget.TabHost;
 
 /**
  * 
- * @author Radu
  * Class for the main activity.
+ * @author Radu Ioan Ciobanu
  */
 public class Tracer extends TabActivity {
     @Override
@@ -32,6 +32,7 @@ public class Tracer extends TabActivity {
         spec = tabHost.newTabSpec("about").setIndicator("About").setContent(intent);
         tabHost.addTab(spec);
 
+        // set the main tab as the default one.
         tabHost.setCurrentTab(0);
     }
 }
