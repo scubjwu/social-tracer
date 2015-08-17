@@ -1,0 +1,22 @@
+# Opportunistic Networking #
+
+Opportunistic networks are networks composed mainly of mobile nodes that do not necessarily have a direct connection between them. However, this is not viewed as a disadvantage because routes are built dynamically, as each node acts according to the store-carry-and-forward paradigm. This assumes that users store data they generate or receive, carry it around until they find a suitable carrier (or the destination), and then forward it. Thus, contacts between nodes are viewed as an opportunity to move data closer to the destination.
+
+Such networks are an evolution of MANETs, where mobile nodes communicate with each other even if a route connecting them does not exist. The nodes that are spread across the environment form the actual network, and they are not required to posses information about the network topology. The routes between nodes are dynamically created, and any nodes can be opportunistically used as a next hop, if they can bring the message closer to the destination.
+
+Nodes may store a message, carry it around, and forward it when they encounter the destination or a node that is more likely to reach the destination. An important topic in opportunistic networks is represented by data dissemination, which is a natural continuation of forwarding, and is usually based on a publish/subscribe model.
+
+Here are some relevant papers on this subject:
+  * C. Boldrini, M. Conti, J. Jacopini, and A. Passarella. **HiBOp: a History Based Routing Protocol for Opportunistic Networks**. In _IEEE International Symposium on a World of Wireless, Mobile and Multimedia Networks, 2007. WoWMoM 2007_, pages 1-12, June 2007.
+  * C. Boldrini, M. Conti, and A. Passarella. **ContentPlace: Social-aware Data Dissemination in Opportunistic Networks**. In _The 11-th ACM International Conference on Modeling, Analysis and Simulation of Wireless and Mobile Systems (MSWiM'08)_, pages 203-210. ACM, 2008.
+  * J. Greifenberg and D. Kutscher. **Efficient Publish/Subscribe-Based Multicast for Opportunistic Networking with Self-Organized Resource Utilization**. In _Proceedings of the 22nd International Conference on Advanced Information Networking and Applications - Workshops_, pages 1708-1714, Washington, DC, USA, 2008. IEEE Computer Society.
+  * B. Han, P. Hui, V. A. Kumar, M. V. Marathe, J. Shao, and A. Srinivasan. **Mobile Data Offloading through Opportunistic Communications and Social Participation**. _IEEE Transactions on Mobile Computing_, 99(PrePrints), 2011.
+  * P. Hui and J. Crowcroft. **How Small Labels Create Big Improvements**. In _Fifth Annual IEEE International Conference on Pervasive Computing and Communications Workshops, 2007, PerCom Workshops '07_, pages 65-70, Mar. 2007.
+  * P. Hui, J. Crowcroft, and E. Yoneki. **BUBBLE Eap: Social-Based Forwarding in Delay Tolerant Networks**. In _Proceedings of the 9th ACM international symposium on Mobile ad hoc networking and computing_, MobiHoc '08, pages 241-250, New York, NY, USA, May 2008. ACM.
+  * V. Lenders, M. May, G. Karlsson, and C. Wacha. **Wireless Ad Hoc Podcasting**. _SIGMOBILE Mob. Comput. Commun. Rev._, 12:65-67, January 2008.
+  * M. Musolesi and C. Mascolo. **CAR: Context-Aware Adaptive Routing for Delay-Tolerant Mobile Networks**. _IEEE Transactions on Mobile Computing_, 8(2):246-260, Feb. 2009.
+  * H. A. Nguyen, S. Giordano, and A. Puiatti. **Probabilistic Routing Protocol for Intermittently Connected Mobile Ad hoc Network (PROPICMAN)**. In _Proceedings of the IEEE International Symposium on a World of Wireless, Mobile and Multimedia Networks, 2007_. WoWMoM 2007, June 2007.
+  * R. Pal, S. Kosta, and P. Hui. **Settling for Less - A QoS Compromise Mechanism for Opportunistic Mobile Networks**. In _Proceedings of the Thirteenth Workshop on Mathematical Performance Modeling and Analysis, San Jose, California, USA_, 2011.
+  * A.-K. Pietilainen, E. Oliver, J. Lebrun, G. Varghese, and C. Diot. **MobiClique: Middleware for Mobile Social Networking**. In _Proceedings of the Second ACM SIGCOMM Workshop on Online Social Networks_, Aug. 2009.
+  * M. Radenkovic and A. Grundy. **Framework for Utility Driven Congestion Control in Delay Tolerant Opportunistic Networks**. In _Proc of IEEE IWCMC, Istanbul_, 2011.
+  * E. Yoneki, P. Hui, S. Chan, and J. Crowcroft. **A Socio-Aware Overlay for Publish/Subscribe Communication in Delay Tolerant Networks**. In _Proceedings of the 10th ACM Symposium on Modeling, analysis, and simulation of wireless and mobile systems_, MSWiM '07, pages 225-234, New York, NY, USA, 2007. ACM.
